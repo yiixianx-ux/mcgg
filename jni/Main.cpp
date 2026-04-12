@@ -64,9 +64,12 @@
 #include <iostream>
 #include <iomanip>
 
+// XDL: Dynamic linker utility for symbol resolution
 #include "xdl.h"
+// Dobby: Runtime hooking framework
 #include "dobby.h"
 
+// Dear ImGui: UI library headers
 #include "imconfig.h"
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -77,7 +80,7 @@
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_android.h"
 
-// Debugging configuration
+// Debugging configuration: 1 to enable logs, 0 to disable
 #define IS_DEBUG 0
 #define LOG_TAG "MagicChessGoGo"
 
@@ -95,7 +98,7 @@
 #define LOGE(...)
 #endif
 
-// Macros for simplifying IL2CPP API resolution and hooking
+// Macro to resolve an IL2CPP API symbol and assign it to a function pointer in the IL2CPP namespace
 #define DO_API(name, handle) \
 { \
     void* sym = xdl_sym(handle, #name, nullptr); \
@@ -107,6 +110,7 @@
     IL2CPP::name = (decltype(IL2CPP::name))(sym); \
 }
 
+// Macro to find a game method and store its address in the Originals namespace without hooking
 #define DO_ASSIGN(name, ns, className, methodName, argCount) \
 { \
     void* addr = GetMethodFromName(ns, className, methodName, argCount); \
@@ -115,6 +119,7 @@
     } \
 }
 
+// Macro to find a game method and install a Dobby hook, redirecting calls to the Hooks namespace
 #define DO_HOOK(name, ns, className, methodName, argCount) \
 { \
     void* addr = GetMethodFromName(ns, className, methodName, argCount); \
@@ -123,18 +128,29 @@
     } \
 }
 
-// Unity basic types
+// Basic Unity Vector2 structure
 struct Vector2 {
     float x, y;
 };
 
+// Basic Unity Vector3 structure
 struct Vector3 {
     float x, y, z;
 };
 
-// Unity Input types
+// IL2CPP String structure used by the game engine
+struct String {
+    void *klass;
+    void *monitor;
+    int length;
+    char16_t chars[0];
+};
+
+// Unity Touch system phase enumeration
 enum class TouchPhase { Began, Moved, Stationary, Ended, Canceled };
+// Unity Touch system type enumeration
 enum class TouchType { Direct, Indirect, Stylus };
+// Unity Touch structure for handling screen input
 struct Touch {
     int m_FingerId;
     Vector2 m_Position;
@@ -152,12 +168,19 @@ struct Touch {
     float m_AzimuthAngle;
 };
 
-// Global state
+// Current screen width for ImGui scaling
 int GLWidth = 0;
+// Current screen height for ImGui scaling
 int GLHeight = 0;
+// Handle to the loaded game logic library (liblogic.so)
 void* Il2cppHandle = nullptr;
 
-// Validates if the library is loaded in the target Unity game process
+// Static storage for current player's account ID
+int SelfAccountID = -1;
+// Static storage for opponent's account ID
+int EnemyAccountID = -1;
+
+// Validates if the library is loaded in the target Unity game process by checking cmdline for a specific marker
 bool IsUnityProcess() {
     FILE* fp = fopen("/proc/self/cmdline", "rb");
     if (!fp) {
@@ -192,7 +215,7 @@ bool IsUnityProcess() {
     return false;
 }
 
-// IL2CPP API function pointers
+// Namespace containing function pointers to the game's internal IL2CPP API
 namespace IL2CPP {
     void* (*il2cpp_domain_get)();
     void* (*il2cpp_domain_get_assemblies)(void* domain, size_t* size);
@@ -233,7 +256,7 @@ namespace IL2CPP {
     void* (*il2cpp_thread_current)();
 }
 
-// Searches for a nested class by name within a given class, walking up its parent chain
+// Helper to find a nested class by walking up the parent class hierarchy
 void* FindNestedInHierarchy(void* klass, const char* name) {
     void* current = klass;
     while (current) {
@@ -251,8 +274,7 @@ void* FindNestedInHierarchy(void* klass, const char* name) {
     return nullptr;
 }
 
-// Searches for a nested class by name within a class AND all its subclasses in the image.
-// Subclass lookup requires a full image scan since IL2CPP has no reverse-parent API.
+// Helper to find a nested class by scanning all classes in an image that are subclasses of the target class
 void* FindNestedInSubclasses(void* image, void* klass, const char* name) {
     void* found = FindNestedInHierarchy(klass, name);
     if (found) return found;
@@ -282,8 +304,7 @@ void* FindNestedInSubclasses(void* image, void* klass, const char* name) {
     return nullptr;
 }
 
-// Resolves an IL2CPP class from name, including nested classes (e.g., "ClassName.NestedClass").
-// For each nesting token, searches the class hierarchy (parents) and subclasses.
+// Resolves an IL2CPP class from a string name, supporting dot-notation for nested classes
 void* ResolveClassFromName(void* image, const char* namespaze, const char* className) {
     LOGD("Resolving class %s::%s", namespaze, className);
     void* klass = IL2CPP::il2cpp_class_from_name(image, namespaze, className);
@@ -316,7 +337,7 @@ void* ResolveClassFromName(void* image, const char* namespaze, const char* class
     return klass;
 }
 
-// Finds a method address by iterating through all loaded assemblies
+// Scans all loaded assemblies to find the native address of a specific IL2CPP method
 void* GetMethodFromName(const char* ns, const char* className, const char* methodName, int argCount) {
     LOGD("Searching for method %s::%s::%s (args: %d)", ns, className, methodName, argCount);
     size_t size = 0;
@@ -350,7 +371,7 @@ void* GetMethodFromName(const char* ns, const char* className, const char* metho
     return nullptr;
 }
 
-// Finds a field address by iterating through all loaded assemblies
+// Scans all loaded assemblies to find the native address of a specific IL2CPP field
 void* GetFieldFromName(const char* ns, const char* className, const char* fieldName) {
     LOGD("Searching for field %s::%s::%s", ns, className, fieldName);
     size_t size = 0;
@@ -383,18 +404,96 @@ void* GetFieldFromName(const char* ns, const char* className, const char* fieldN
     return nullptr;
 }
 
-// Original function pointers for hooks
+// Converts an IL2CPP String (UTF-16) to a standard C++ std::string (UTF-8)
+std::string Il2CppToStdString(String* str)
+{
+    if (!str || str->length <= 0)
+        return {};
+
+    std::string out;
+    out.reserve(str->length); // minimum
+
+    const char16_t* data = str->chars;
+    int len = str->length;
+
+    for (int i = 0; i < len; ++i)
+    {
+        char32_t cp;
+        char16_t ch = data[i];
+
+        // --- Handle surrogate pair ---
+        if (ch >= 0xD800 && ch <= 0xDBFF) // high surrogate
+        {
+            if (i + 1 < len)
+            {
+                char16_t low = data[i + 1];
+                if (low >= 0xDC00 && low <= 0xDFFF)
+                {
+                    cp = ((ch - 0xD800) << 10)
+                       + (low - 0xDC00)
+                       + 0x10000;
+                    ++i; // consume pair
+                }
+                else
+                {
+                    cp = 0xFFFD; // invalid → replacement char
+                }
+            }
+            else
+            {
+                cp = 0xFFFD;
+            }
+        }
+        else if (ch >= 0xDC00 && ch <= 0xDFFF) // stray low surrogate
+        {
+            cp = 0xFFFD;
+        }
+        else
+        {
+            cp = ch;
+        }
+
+        // --- Encode UTF-8 ---
+        if (cp <= 0x7F)
+        {
+            out.push_back(static_cast<char>(cp));
+        }
+        else if (cp <= 0x7FF)
+        {
+            out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+            out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        }
+        else if (cp <= 0xFFFF)
+        {
+            out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+            out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        }
+        else
+        {
+            out.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+            out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        }
+    }
+
+    return out;
+}
+
+// Namespace for storing the original function pointers after hooking
 namespace Originals {
     EGLBoolean (*EglSwapBuffers)(EGLDisplay dpy, EGLSurface surface) = nullptr;
 
     Touch (*Input_GetTouch)(int index) = nullptr;
 
-    int (*MCLogicBattleData_ILOGIC_GetCurrentOpponentAccountID)(int accountID) = nullptr;
+    int (*MCLogicBattleData_ILOGIC_GetCurrentOpponentAccountID)(void* instance, int accountID) = nullptr;
+    String* (*MCLogicBattleData_ILOGIC_GetSelfChessPlayerName)(void* instance, int accID) = nullptr;
 }
 
-// Hook implementations
+// Namespace containing the detour functions that replace original game logic
 namespace Hooks {
-    // Hooks eglSwapBuffers to render the ImGui overlay
+    // Hook for eglSwapBuffers: called every frame to render the ImGui overlay
     EGLBoolean EglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
         eglQuerySurface(dpy, surface, EGL_WIDTH, &GLWidth);
         eglQuerySurface(dpy, surface, EGL_HEIGHT, &GLHeight);
@@ -424,10 +523,18 @@ namespace Hooks {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui::NewFrame();
 
+        void* MCLogicBattleData_m_SelfAccID = GetFieldFromName("", "MCLogicBattleData", "m_SelfAccID");
+        if (MCLogicBattleData_m_SelfAccID) {
+            IL2CPP::il2cpp_field_static_get_value(MCLogicBattleData_m_SelfAccID, &SelfAccountID);
+            EnemyAccountID = Originals::MCLogicBattleData_ILOGIC_GetCurrentOpponentAccountID(nullptr, SelfAccountID);
+        }
+
         if (ImGui::Begin("Magic Chess Go Go", nullptr)) {
             if (ImGui::BeginTabBar("##MainTabBar")) {
                 if (ImGui::BeginTabItem("Info")) {
-
+                    ImGui::SeparatorText("Players");
+                    std::string EnemyName = Il2CppToStdString(Originals::MCLogicBattleData_ILOGIC_GetSelfChessPlayerName(nullptr, EnemyAccountID));
+                    ImGui::Text("Enemy: %s", EnemyName.c_str());
                     ImGui::EndTabItem();
                 }
                 ImGui::EndTabBar();
@@ -440,7 +547,7 @@ namespace Hooks {
         return Originals::EglSwapBuffers(dpy, surface);
     }
 
-    // Hooks Unity's GetTouch to pass input events to ImGui
+    // Hook for Unity's GetTouch: redirects touch input from the game to ImGui
     Touch Input_GetTouch(int index) {
         auto Ret = Originals::Input_GetTouch(index);
         if (ImGui::GetCurrentContext() != nullptr && index == 0) {
@@ -471,10 +578,12 @@ namespace Hooks {
     }
 }
 
-// Core setup thread that initializes symbols and installs hooks
+// Detached thread that handles the asynchronous initialization of the mod
 void SetupThread() {
+    // Hook rendering loop first to ensure UI is ready as soon as possible
     DobbyHook((void*)DobbySymbolResolver("libEGL.so", "eglSwapBuffers"), (void*)Hooks::EglSwapBuffers, (void**)&Originals::EglSwapBuffers);
 
+    // Wait for the game's logic library to be loaded into memory before resolving IL2CPP symbols
     while (!Il2cppHandle) {
         Il2cppHandle = xdl_open("liblogic.so", XDL_DEFAULT);
         if (Il2cppHandle) {
@@ -483,6 +592,7 @@ void SetupThread() {
         std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     }
 
+    // Resolve all necessary IL2CPP API functions using the library handle
     DO_API(il2cpp_domain_get, Il2cppHandle)
     DO_API(il2cpp_domain_get_assemblies, Il2cppHandle)
     DO_API(il2cpp_assembly_get_image, Il2cppHandle)
@@ -521,105 +631,109 @@ void SetupThread() {
     DO_API(il2cpp_thread_detach, Il2cppHandle)
     DO_API(il2cpp_thread_current, Il2cppHandle)
 
+    // Attach current thread to the IL2CPP domain to allow safe API calls
     IL2CPP::il2cpp_thread_attach(IL2CPP::il2cpp_domain_get());
 
+    // Install hook for input handling
     DO_HOOK(Input_GetTouch, "UnityEngine", "Input", "GetTouch", 1);
 
+    // Resolve game-specific methods for use in the UI (without hooking)
     DO_ASSIGN(MCLogicBattleData_ILOGIC_GetCurrentOpponentAccountID, "", "MCLogicBattleData", "ILOGIC_GetCurrentOpponentAccountID", 1);
+    DO_ASSIGN(MCLogicBattleData_ILOGIC_GetSelfChessPlayerName, "", "MCLogicBattleData", "ILOGIC_GetSelfChessPlayerName", 1);
 }
 
-// // Handle for the Unity engine library
-// void* UnityHandle = nullptr;
+// Handle for the Unity engine library used for JNI loading/unloading
+void* UnityHandle = nullptr;
 
-// // JNI function to manually load the original Unity library
-// jboolean LoadOriginalLibrary(JNIEnv* env, jobject /*thiz*/, jstring path) {
-    // if (env == nullptr || path == nullptr) {
-        // return JNI_FALSE;
-    // }
+// JNI function to manually load the original Unity library and execute its JNI_OnLoad
+jboolean LoadOriginalLibrary(JNIEnv* env, jobject /*thiz*/, jstring path) {
+    if (env == nullptr || path == nullptr) {
+        return JNI_FALSE;
+    }
 
-    // const char* basePath = env->GetStringUTFChars(path, nullptr);
-    // if (basePath == nullptr) {
-        // return JNI_FALSE;
-    // }
+    const char* basePath = env->GetStringUTFChars(path, nullptr);
+    if (basePath == nullptr) {
+        return JNI_FALSE;
+    }
 
-    // const char* kLibName = "libunity.so";
+    const char* kLibName = "libunity.so";
 
-    // char fullPath[1024];
-    // std::snprintf(fullPath, sizeof(fullPath), "%s/%s", basePath, kLibName);
-    // env->ReleaseStringUTFChars(path, basePath);
+    char fullPath[1024];
+    std::snprintf(fullPath, sizeof(fullPath), "%s/%s", basePath, kLibName);
+    env->ReleaseStringUTFChars(path, basePath);
 
-    // void* handle = xdl_open(fullPath, XDL_DEFAULT);
-    // if (!handle) {
-        // return JNI_FALSE;
-    // }
+    void* handle = xdl_open(fullPath, XDL_DEFAULT);
+    if (!handle) {
+        return JNI_FALSE;
+    }
 
-    // typedef jint (*JniOnLoadFn)(JavaVM*, void*);
-    // JniOnLoadFn jniOnLoad = (JniOnLoadFn)xdl_sym(handle, "JNI_OnLoad", nullptr);
+    typedef jint (*JniOnLoadFn)(JavaVM*, void*);
+    JniOnLoadFn jniOnLoad = (JniOnLoadFn)xdl_sym(handle, "JNI_OnLoad", nullptr);
 
-    // if (!jniOnLoad) {
-        // xdl_close(handle);
-        // return JNI_FALSE;
-    // }
+    if (!jniOnLoad) {
+        xdl_close(handle);
+        return JNI_FALSE;
+    }
 
-    // JavaVM* vm = nullptr;
-    // if (env->GetJavaVM(&vm) != JNI_OK || vm == nullptr) {
-        // xdl_close(handle);
-        // return JNI_FALSE;
-    // }
+    JavaVM* vm = nullptr;
+    if (env->GetJavaVM(&vm) != JNI_OK || vm == nullptr) {
+        xdl_close(handle);
+        return JNI_FALSE;
+    }
 
-    // jint version = jniOnLoad(vm, nullptr);
-    // if (version < JNI_VERSION_1_6) {
-        // xdl_close(handle);
-        // return JNI_FALSE;
-    // }
+    jint version = jniOnLoad(vm, nullptr);
+    if (version < JNI_VERSION_1_6) {
+        xdl_close(handle);
+        return JNI_FALSE;
+    }
 
-    // UnityHandle = handle;
-    // return JNI_TRUE;
-// }
+    UnityHandle = handle;
+    return JNI_TRUE;
+}
 
-// // JNI function to unload the Unity library
-// jboolean UnloadOriginalLibrary(JNIEnv* /*env*/, jclass /*clazz*/) {
-    // if (UnityHandle != nullptr) {
-        // xdl_close(UnityHandle);
-        // UnityHandle = nullptr;
-    // }
-    // return JNI_TRUE;
-// }
+// JNI function to unload the Unity library from the process
+jboolean UnloadOriginalLibrary(JNIEnv* /*env*/, jclass /*clazz*/) {
+    if (UnityHandle != nullptr) {
+        xdl_close(UnityHandle);
+        UnityHandle = nullptr;
+    }
+    return JNI_TRUE;
+}
 
-// // Entry point for the shared library
-// JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
-    // if (vm == nullptr) {
-        // return JNI_VERSION_1_6;
-    // }
+// JNI entry point: registers native methods with the game's NativeLoader class
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
+    if (vm == nullptr) {
+        return JNI_VERSION_1_6;
+    }
 
-    // JNIEnv* env = nullptr;
-    // if (vm->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK || env == nullptr) {
-        // return JNI_VERSION_1_6;
-    // }
+    JNIEnv* env = nullptr;
+    if (vm->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK || env == nullptr) {
+        return JNI_VERSION_1_6;
+    }
 
-    // if (reserved == (void*)1337) {
-        // return JNI_VERSION_1_6;
-    // }
+    if (reserved == (void*)1337) {
+        return JNI_VERSION_1_6;
+    }
 
-    // jclass clazz = env->FindClass("com/unity3d/player/NativeLoader");
-    // if (clazz == nullptr) {
-        // return JNI_VERSION_1_6;
-    // }
+    jclass clazz = env->FindClass("com/unity3d/player/NativeLoader");
+    if (clazz == nullptr) {
+        return JNI_VERSION_1_6;
+    }
 
-    // const JNINativeMethod methods[] = {
-        // {"load", "(Ljava/lang/String;)Z", (void*)LoadOriginalLibrary},
-        // {"unload", "()Z", (void*)UnloadOriginalLibrary}
-    // };
+    const JNINativeMethod methods[] = {
+        {"load", "(Ljava/lang/String;)Z", (void*)LoadOriginalLibrary},
+        {"unload", "()Z", (void*)UnloadOriginalLibrary}
+    };
 
-    // if (env->RegisterNatives(clazz, methods,
-                             // sizeof(methods) / sizeof(methods[0])) != JNI_OK) {
-        // return JNI_VERSION_1_6;
-    // }
+    if (env->RegisterNatives(clazz, methods,
+                             sizeof(methods) / sizeof(methods[0])) != JNI_OK) {
+        return JNI_VERSION_1_6;
+    }
 
-    // return JNI_VERSION_1_6;
-// }
+    return JNI_VERSION_1_6;
+}
 
-// Constructor attribute: runs automatically when the .so is loaded into the process
+// Constructor attribute: automatically invoked by the Android linker when the .so is loaded
 __attribute__((constructor))
 void InitLibrary() {
     if (!IsUnityProcess()) return;

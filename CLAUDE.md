@@ -128,18 +128,13 @@ void* sym    = xdl_sym(handle, "TargetFunctionName", nullptr);
 - Prefer XDL over `dlsym` for game library symbols, as many are stripped from the standard export table.
 - Always null-check returned addresses before passing to Dobby.
 
-### Dear ImGui — Mod Menu UI
+### External Libraries
 
-- **Location:** `jni/IMGUI/`
-- **Purpose:** Renders the in-game mod menu as an overlay using the game's own rendering context.
-- Rendering must be hooked into the game's frame submission (e.g., `eglSwapBuffers` or equivalent).
-- UI state (toggles, sliders) should be stored in global or static variables accessible from both the hook and the render loop.
+- **Dobby**: Core hooking engine.
+- **XDL**: Advanced symbol resolution and library loading.
+- **Dear ImGui**: Mod menu UI framework. Rendered via `eglSwapBuffers` hook and interactive via `Input.GetTouch` hook.
+- **CURL & OpenSSL**: Linked for future networking capabilities (not currently active in `Main.cpp`).
 
-### JNI — Unity Engine Integration
-
-- **Purpose:** Provides control over the loading and unloading of the game's core engine.
-- **Registration:** Native methods are registered in the Java class `com.unity3d.player.NativeLoader`.
-- **Mechanism:** Uses XDL to manually load `libunity.so` and execute its `JNI_OnLoad` function, allowing for precise control over the engine's initialization sequence.
 
 ### Android Logging
 
