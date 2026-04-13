@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-Android-green.svg)](https://developer.android.com)
-[![NDK](https://img.shields.io/badge/NDK-arm64--v8a-blue.svg)](https://developer.android.com/ndk)
+[![NDK](https://img.shields.io/badge/NDK-arm64--v8a%20%7C%20armeabi--v7a-blue.svg)](https://developer.android.com/ndk)
 [![C++](https://img.shields.io/badge/C++-20-00599C.svg?logo=c%2B%2B)](https://en.cppreference.com/w/cpp/20)
 <a href="https://play.google.com/store/apps/details?id=com.mobilechess.gp">
   <img src="https://img.shields.io/badge/Game-Magic_Chess_Go_Go-important?logo=youtubegaming" alt="Game - Magic Chess Go Go">
@@ -54,7 +54,7 @@ This project compiles to a native Android shared library (`.so`) that is injecte
 | Symbol Resolution | [XDL](https://github.com/hexhacking/xDL) | Dynamic library introspection |
 | UI | [Dear ImGui](https://github.com/ocornut/imgui) | In-game mod menu overlay |
 | Target OS | Android API 21+ | Minimum supported platform |
-| Architecture | `arm64-v8a` | Target ABI |
+| Architecture | `arm64-v8a`, `armeabi-v7a` | Target ABI |
 
 ---
 
@@ -73,12 +73,14 @@ This project compiles to a native Android shared library (`.so`) that is injecte
 │   └── OPENSSL/                # OpenSSL prebuilts
 ├── dump/                       # IL2CPP metadata dump
 ├── libs/                       # Output: compiled .so files
-│   └── arm64-v8a/
+│   ├── arm64-v8a/
+│   │   └── libmain.so
+│   └── armeabi-v7a/
 │       └── libmain.so
 ├── obj/                        # Intermediate build objects
 └── .github/
     └── workflows/
-        └── release.yml           # CI/CD pipeline
+        └── release.yml         # CI/CD pipeline
 ```
 
 ---
@@ -120,9 +122,10 @@ The compiled library will be placed at:
 
 ```
 libs/arm64-v8a/libmain.so
+libs/armeabi-v7a/libmain.so
 ```
 
-> **Note:** Ensure `APP_ABI` in `Application.mk` matches your target device architecture. Currently set to `arm64-v8a`.
+> **Note:** Ensure `APP_ABI` in `Application.mk` matches your target device architecture.
 
 ---
 
