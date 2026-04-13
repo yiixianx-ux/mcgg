@@ -674,96 +674,97 @@ void SetupThread() {
     DO_ASSIGN(MCLogicBattleData_ILOGIC_GetSelfChessPlayerName, "", "MCLogicBattleData", "ILOGIC_GetSelfChessPlayerName", 1);
 }
 
-// Handle for the Unity engine library used for JNI loading/unloading
-void* UnityHandle = nullptr;
+// Handle to the original libunity.so loaded via JNI
+void* UnityLibraryHandle = nullptr;
 
-// JNI function to manually load the original Unity library and execute its JNI_OnLoad
-jboolean LoadOriginalLibrary(JNIEnv* env, jobject /*thiz*/, jstring path) {
-    if (env == nullptr || path == nullptr) {
-        return JNI_FALSE;
-    }
-
-    const char* basePath = env->GetStringUTFChars(path, nullptr);
-    if (basePath == nullptr) {
-        return JNI_FALSE;
-    }
-
-    const char* kLibName = "libunity.so";
-
+// JNI function to load the original libunity.so and call its JNI_OnLoad
+jboolean LoadOriginalLibrary(JNIEnv* env, jobject, jstring path) {
+    if (!env || !path) return JNI_FALSE;
+    const char* libraryPath = env->GetStringUTFChars(path, nullptr);
+    if (!libraryPath) return JNI_FALSE;
     char fullPath[1024];
-    std::snprintf(fullPath, sizeof(fullPath), "%s/%s", basePath, kLibName);
-    env->ReleaseStringUTFChars(path, basePath);
+    snprintf(fullPath, sizeof(fullPath), "%s/%s", libraryPath, "libunity.so");
+    env->ReleaseStringUTFChars(path, libraryPath);
 
-    void* handle = xdl_open(fullPath, XDL_DEFAULT);
-    if (!handle) {
+    LOGI("Loading original library from: %s", fullPath);
+    UnityLibraryHandle = dlopen(fullPath, RTLD_LAZY | RTLD_LOCAL);
+    if (!UnityLibraryHandle) {
+        LOGE("Failed to dlopen libunity.so: %s", dlerror());
         return JNI_FALSE;
     }
 
-    typedef jint (*JniOnLoadFn)(JavaVM*, void*);
-    JniOnLoadFn jniOnLoad = (JniOnLoadFn)xdl_sym(handle, "JNI_OnLoad", nullptr);
-
+    auto jniOnLoad = (jint (*)(JavaVM*, void*))dlsym(UnityLibraryHandle, "JNI_OnLoad");
     if (!jniOnLoad) {
-        xdl_close(handle);
+        LOGE("Failed to find JNI_OnLoad in libunity.so");
+        dlclose(UnityLibraryHandle);
+        UnityLibraryHandle = nullptr;
         return JNI_FALSE;
     }
 
     JavaVM* vm = nullptr;
-    if (env->GetJavaVM(&vm) != JNI_OK || vm == nullptr) {
-        xdl_close(handle);
+    if (env->GetJavaVM(&vm) != JNI_OK || !vm) {
+        LOGE("Failed to get JavaVM");
+        dlclose(UnityLibraryHandle);
+        UnityLibraryHandle = nullptr;
         return JNI_FALSE;
     }
 
-    jint version = jniOnLoad(vm, nullptr);
-    if (version < JNI_VERSION_1_6) {
-        xdl_close(handle);
+    jint result = jniOnLoad(vm, nullptr);
+    if (result < JNI_VERSION_1_6) {
+        LOGE("libunity.so JNI_OnLoad returned unsupported version: %d", result);
+        dlclose(UnityLibraryHandle);
+        UnityLibraryHandle = nullptr;
         return JNI_FALSE;
     }
 
-    UnityHandle = handle;
+    LOGI("Successfully loaded original library and executed JNI_OnLoad");
     return JNI_TRUE;
 }
 
-// JNI function to unload the Unity library from the process
-jboolean UnloadOriginalLibrary(JNIEnv* /*env*/, jclass /*clazz*/) {
-    if (UnityHandle != nullptr) {
-        xdl_close(UnityHandle);
-        UnityHandle = nullptr;
+// JNI function to unload the original libunity.so
+jboolean UnloadOriginalLibrary(JNIEnv*, jclass) {
+    if (UnityLibraryHandle) {
+        LOGI("Unloading original library: %p", UnityLibraryHandle);
+        dlclose(UnityLibraryHandle);
+        UnityLibraryHandle = nullptr;
+    } else {
+        LOGW("UnloadOriginalLibrary called but no library was loaded");
     }
     return JNI_TRUE;
 }
 
-// JNI entry point: registers native methods with the game's NativeLoader class
-JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
-    if (vm == nullptr) {
+extern "C" __attribute__((used, visibility("default")))
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *key) {
+    if (!vm) return JNI_VERSION_1_6;
+    JNIEnv *env = nullptr;
+    if (vm->GetEnv((void **)&env, JNI_VERSION_1_6) != JNI_OK || !env) return JNI_VERSION_1_6;
+
+    if (key == (void*)1337) {
+        LOGI("JNI_OnLoad called with magic key (1337), skipping native registration.");
         return JNI_VERSION_1_6;
     }
 
-    JNIEnv* env = nullptr;
-    if (vm->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK || env == nullptr) {
-        return JNI_VERSION_1_6;
-    }
-
-    if (reserved == (void*)1337) {
-        return JNI_VERSION_1_6;
-    }
-
+    LOGI("Registering native methods for com/unity3d/player/NativeLoader");
     jclass clazz = env->FindClass("com/unity3d/player/NativeLoader");
-    if (clazz == nullptr) {
+    if (!clazz) {
+        LOGE("Failed to find class com/unity3d/player/NativeLoader");
         return JNI_VERSION_1_6;
     }
 
     const JNINativeMethod methods[] = {
-        {"load", "(Ljava/lang/String;)Z", (void*)LoadOriginalLibrary},
-        {"unload", "()Z", (void*)UnloadOriginalLibrary}
+        { "load", "(Ljava/lang/String;)Z", (void*)LoadOriginalLibrary },
+        { "unload", "()Z", (void*)UnloadOriginalLibrary }
     };
 
-    if (env->RegisterNatives(clazz, methods,
-                             sizeof(methods) / sizeof(methods[0])) != JNI_OK) {
+    if (env->RegisterNatives(clazz, methods, sizeof(methods) / sizeof(JNINativeMethod)) != JNI_OK) {
+        LOGE("Failed to register native methods for com/unity3d/player/NativeLoader");
         return JNI_VERSION_1_6;
     }
 
+    LOGI("Native methods successfully registered");
     return JNI_VERSION_1_6;
 }
+
 
 // Constructor attribute: automatically invoked by the Android linker when the .so is loaded
 __attribute__((constructor))
