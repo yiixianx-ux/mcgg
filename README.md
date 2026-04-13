@@ -36,7 +36,7 @@ This project compiles to a native Android shared library (`.so`) that is injecte
 
 **Key capabilities:**
 
-- Runtime function interception via Dobby hooks
+- Runtime function interception via Dobby hooks with aggressive safety validation
 - Advanced IL2CPP symbol resolution (supporting nested classes and hierarchy scanning) via XDL
 - In-game overlay UI rendered through ImGui (hooked into `eglSwapBuffers`)
 - Interactive UI input via Unity `Input.GetTouch` interception

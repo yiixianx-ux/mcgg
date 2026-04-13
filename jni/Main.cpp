@@ -105,7 +105,7 @@
     if (sym) { \
         LOGD("Resolved API symbol: %s at %p", #name, sym); \
     } else { \
-        LOGE("Failed to resolve API symbol: %s", #name); \
+        LOGE("CRITICAL FAILURE: Failed to resolve API symbol: %s", #name); \
     } \
     IL2CPP::name = (decltype(IL2CPP::name))(sym); \
 }
@@ -258,11 +258,14 @@ namespace IL2CPP {
 
 // Helper to find a nested class by walking up the parent class hierarchy
 void* FindNestedInHierarchy(void* klass, const char* name) {
+    if (!klass || !name) return nullptr;
+
     void* current = klass;
     while (current) {
         void* iter = nullptr;
         void* nested = nullptr;
         while ((nested = IL2CPP::il2cpp_class_get_nested_types(current, &iter))) {
+            if (!nested) break;
             const char* nName = IL2CPP::il2cpp_class_get_name(nested);
             if (nName && strcmp(nName, name) == 0) {
                 LOGD("Found nested class %s in parent %s", name, IL2CPP::il2cpp_class_get_name(current));
@@ -276,6 +279,8 @@ void* FindNestedInHierarchy(void* klass, const char* name) {
 
 // Helper to find a nested class by scanning all classes in an image that are subclasses of the target class
 void* FindNestedInSubclasses(void* image, void* klass, const char* name) {
+    if (!image || !klass || !name) return nullptr;
+
     void* found = FindNestedInHierarchy(klass, name);
     if (found) return found;
 
@@ -306,6 +311,8 @@ void* FindNestedInSubclasses(void* image, void* klass, const char* name) {
 
 // Resolves an IL2CPP class from a string name, supporting dot-notation for nested classes
 void* ResolveClassFromName(void* image, const char* namespaze, const char* className) {
+    if (!image || !namespaze || !className) return nullptr;
+
     LOGD("Resolving class %s::%s", namespaze, className);
     void* klass = IL2CPP::il2cpp_class_from_name(image, namespaze, className);
     if (klass) {
@@ -339,6 +346,8 @@ void* ResolveClassFromName(void* image, const char* namespaze, const char* class
 
 // Scans all loaded assemblies to find the native address of a specific IL2CPP method
 void* GetMethodFromName(const char* ns, const char* className, const char* methodName, int argCount) {
+    if (!ns || !className || !methodName) return nullptr;
+
     LOGD("Searching for method %s::%s::%s (args: %d)", ns, className, methodName, argCount);
     size_t size = 0;
     void* domain = IL2CPP::il2cpp_domain_get();
@@ -373,6 +382,8 @@ void* GetMethodFromName(const char* ns, const char* className, const char* metho
 
 // Scans all loaded assemblies to find the native address of a specific IL2CPP field
 void* GetFieldFromName(const char* ns, const char* className, const char* fieldName) {
+    if (!ns || !className || !fieldName) return nullptr;
+
     LOGD("Searching for field %s::%s::%s", ns, className, fieldName);
     size_t size = 0;
     void* domain = IL2CPP::il2cpp_domain_get();
@@ -407,7 +418,10 @@ void* GetFieldFromName(const char* ns, const char* className, const char* fieldN
 // Converts an IL2CPP String (UTF-16) to a standard C++ std::string (UTF-8)
 std::string Il2CppToStdString(String* str)
 {
-    if (!str || str->length <= 0)
+    if (!str || str->length <= 0 || str->length > 1000000) // Sanity check on length
+        return {};
+
+    if (!str->chars)
         return {};
 
     std::string out;
@@ -526,15 +540,24 @@ namespace Hooks {
         void* MCLogicBattleData_m_SelfAccID = GetFieldFromName("", "MCLogicBattleData", "m_SelfAccID");
         if (MCLogicBattleData_m_SelfAccID) {
             IL2CPP::il2cpp_field_static_get_value(MCLogicBattleData_m_SelfAccID, &SelfAccountID);
-            EnemyAccountID = Originals::MCLogicBattleData_ILOGIC_GetCurrentOpponentAccountID(nullptr, SelfAccountID);
+
+            if (Originals::MCLogicBattleData_ILOGIC_GetCurrentOpponentAccountID != nullptr && SelfAccountID != -1) {
+                EnemyAccountID = Originals::MCLogicBattleData_ILOGIC_GetCurrentOpponentAccountID(nullptr, SelfAccountID);
+            } else {
+                LOGW("Cannot resolve EnemyAccountID: Original function is null or SelfAccountID is -1");
+            }
         }
 
         if (ImGui::Begin("Magic Chess Go Go", nullptr)) {
             if (ImGui::BeginTabBar("##MainTabBar")) {
                 if (ImGui::BeginTabItem("Info")) {
                     ImGui::SeparatorText("Players");
-                    std::string EnemyName = Il2CppToStdString(Originals::MCLogicBattleData_ILOGIC_GetSelfChessPlayerName(nullptr, EnemyAccountID));
-                    ImGui::Text("Enemy: %s", EnemyName.c_str());
+                    if (Originals::MCLogicBattleData_ILOGIC_GetSelfChessPlayerName != nullptr && EnemyAccountID != -1) {
+                        std::string EnemyName = Il2CppToStdString(Originals::MCLogicBattleData_ILOGIC_GetSelfChessPlayerName(nullptr, EnemyAccountID));
+                        ImGui::Text("Enemy: %s", EnemyName.c_str());
+                    } else {
+                        ImGui::Text("Enemy: Unknown");
+                    }
                     ImGui::EndTabItem();
                 }
                 ImGui::EndTabBar();
@@ -549,6 +572,10 @@ namespace Hooks {
 
     // Hook for Unity's GetTouch: redirects touch input from the game to ImGui
     Touch Input_GetTouch(int index) {
+        if (Originals::Input_GetTouch == nullptr) {
+            LOGE("Input_GetTouch hook called but original function is null!");
+            return Touch{0};
+        }
         auto Ret = Originals::Input_GetTouch(index);
         if (ImGui::GetCurrentContext() != nullptr && index == 0) {
             ImGuiIO& io = ImGui::GetIO();
@@ -581,15 +608,20 @@ namespace Hooks {
 // Detached thread that handles the asynchronous initialization of the mod
 void SetupThread() {
     // Hook rendering loop first to ensure UI is ready as soon as possible
-    DobbyHook((void*)DobbySymbolResolver("libEGL.so", "eglSwapBuffers"), (void*)Hooks::EglSwapBuffers, (void**)&Originals::EglSwapBuffers);
+    void* eglSwapBuffersAddr = DobbySymbolResolver("libEGL.so", "eglSwapBuffers");
+    if (eglSwapBuffersAddr) {
+        DobbyHook((void*)eglSwapBuffersAddr, (void*)Hooks::EglSwapBuffers, (void**)&Originals::EglSwapBuffers);
+    } else {
+        LOGE("CRITICAL FAILURE: Could not resolve eglSwapBuffers in libEGL.so");
+    }
 
     // Wait for the game's logic library to be loaded into memory before resolving IL2CPP symbols
     while (!Il2cppHandle) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
         Il2cppHandle = xdl_open("liblogic.so", XDL_DEFAULT);
         if (Il2cppHandle) {
             break;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     }
 
     // Resolve all necessary IL2CPP API functions using the library handle

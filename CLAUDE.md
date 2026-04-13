@@ -164,7 +164,8 @@ void* sym    = xdl_sym(handle, "TargetFunctionName", nullptr);
 
 ## Development Conventions
 
-- **Hook safety:** All Dobby hooks must guard against null symbol resolution. Never hook a null address.
+- **Hook safety:** All Dobby hooks must guard against null symbol resolution and invalid state. Never hook a null address, and always validate critical values (e.g., account IDs != -1) before passing them to original game functions.
+- **Input validation:** All IL2CPP helper functions (e.g., `ResolveClassFromName`, `GetMethodFromName`) must strictly validate all input pointers and returned symbols to prevent null pointer dereferences.
 - **Thread safety:** ImGui rendering and hook callbacks may run on different threads. Use mutexes or atomic flags to share state.
 - **Macro hygiene:** Use `DO_API` for symbol resolution and `DO_HOOK` for installing hooks to reduce boilerplate. Keep `IS_DEBUG` set to `0` in committed code unless actively debugging. CI builds should always use `IS_DEBUG 0`.
 - **Memory:** Prefer stack allocation in hook callbacks. Avoid heap allocations in hot-path hooks to minimize latency impact.
