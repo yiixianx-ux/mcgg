@@ -774,11 +774,11 @@ namespace Hooks {
                             std::string SelfName = Il2CppStringToStdString(RawSelfName);
                             Il2CppString* RawEnemyName = Originals::MCLogicBattleData_ILOGIC_GetSelfChessPlayerName(nullptr, currentEnemyID);
                             std::string EnemyName = Il2CppStringToStdString(RawEnemyName);
-                            ImGui::Text("Self Name: %s", SelfName.empty() ? "Unknown" : SelfName.c_str());
-                            ImGui::Text("Enemy Name: %s", EnemyName.empty() ? "Unknown" : EnemyName.c_str());
+                            ImGui::Text("Self Player Name: %s", SelfName.empty() ? "Unknown" : SelfName.c_str());
+                            ImGui::Text("Enemy Player Name: %s", EnemyName.empty() ? "Unknown" : EnemyName.c_str());
                         } else {
-                            ImGui::Text("Self Name: Unknown");
-                            ImGui::Text("Enemy Name: Unknown");
+                            ImGui::Text("Self Player Name: Unknown");
+                            ImGui::Text("Enemy Player Name: Unknown");
                         }
                         ImGui::EndTabItem();
                     }
