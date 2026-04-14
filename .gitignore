@@ -1,6 +1,8 @@
 # NDK Build Artifacts
-libs/
 obj/
+
+# Claude Code
+.claude/
 
 # Claude Code
 .claude/
