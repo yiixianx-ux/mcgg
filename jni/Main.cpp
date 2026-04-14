@@ -95,6 +95,7 @@
 #include "imstb_truetype.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_android.h"
+#include "NotoSans-Regular.h"
 
 #include "Color.hpp"
 #include "Vector2.hpp"
@@ -713,6 +714,19 @@ namespace Hooks {
                 io.ConfigWindowsResizeFromEdges = false;
                 
                 ImGui_ImplOpenGL3_Init("#version 300 es");
+
+                ImFontConfig font_cfg;
+                font_cfg.FontDataOwnedByAtlas = true;
+                font_cfg.PixelSnapH = true;
+
+                static const ImWchar full_ranges[] = {
+                    0x0001, 0x10FFFF,
+                    0
+                };
+
+                io.Fonts->AddFontFromMemoryTTF((void*)NotoSans_Regular_ttf, sizeof(NotoSans_Regular_ttf), 20.0f, &font_cfg, full_ranges);
+                io.Fonts->Build();
+
                 ImGui::StyleColorsDark();
                 
                 ImGuiStyle& style = ImGui::GetStyle();

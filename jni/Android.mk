@@ -61,6 +61,7 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/DOBBY/include \
     $(LOCAL_PATH)/IMGUI/include \
     $(LOCAL_PATH)/IMGUI/include/backends \
+    $(LOCAL_PATH)/IMGUI/include/fonts \
     $(LOCAL_PATH)/CURL/include \
     $(LOCAL_PATH)/OPENSSL/include \
     $(LOCAL_PATH)/UNITY/include \
