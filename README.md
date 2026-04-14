@@ -119,8 +119,6 @@ On a successful build, the compiled shared library will be placed at:
 libs/arm64-v8a/libmain.so
 ```
 
-> **Note:** If your target device uses a different architecture (e.g., `armeabi-v7a`), update the `APP_ABI` field in `Application.mk` accordingly before building.
-
 ---
 
 ## CI/CD & Releases
