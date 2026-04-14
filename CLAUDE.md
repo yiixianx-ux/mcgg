@@ -91,6 +91,11 @@ InitLibrary() constructor runs
                 ├──▶ Attach thread to IL2CPP domain
                 │
                 └──▶ Resolve game methods & install hooks (using DO_HOOK macro)
+
+Parallel JNI Flow:
+JNI_OnLoad (registered via NativeLoader)
+        │
+        └──▶ LoadOriginalLibrary() ──▶ dlopen("libunity.so") ──▶ execute original JNI_OnLoad
 ```
 
 ---

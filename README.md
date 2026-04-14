@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/Game-Magic_Chess_Go_Go-important?logo=youtubegaming" alt="Game - Magic Chess Go Go">
 </a>
 
-A high-performance, open-source native modding framework for **Magic Chess: Go Go**, built on C++20 and Android NDK. Enables runtime game modification via process injection, binary instrumentation, and a real-time ImGui overlay.
+A high-performance, open-source native modding framework for **Magic Chess: Go Go**, built on C++20 and Android NDK. It utilizes a proxy library pattern to inject into the game process, enabling runtime modification via binary instrumentation and a real-time ImGui overlay.
 
 </div>
 
@@ -40,6 +40,7 @@ This project compiles to a native Android shared library (`.so`) that is injecte
 - Advanced IL2CPP symbol resolution (supporting nested classes and hierarchy scanning) via XDL
 - In-game overlay UI rendered through ImGui (hooked into `eglSwapBuffers`)
 - Interactive UI input via Unity `Input.GetTouch` interception
+- Robust UTF-16 to UTF-8 string conversion for safe game-text display
 - Structured logging via Android `logcat`
 
 ---

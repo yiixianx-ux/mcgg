@@ -54,14 +54,16 @@ LOCAL_LDLIBS := \
     -landroid \
     -lEGL \
     -lGLESv3 \
+    -lz \
 
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/XDL/include \
     $(LOCAL_PATH)/DOBBY/include \
     $(LOCAL_PATH)/IMGUI/include \
     $(LOCAL_PATH)/IMGUI/include/backends \
-    $(LOCAL_PATH)/CURL/include/ \
-    $(LOCAL_PATH)/OPENSSL/include/ \
+    $(LOCAL_PATH)/CURL/include \
+    $(LOCAL_PATH)/OPENSSL/include \
+    $(LOCAL_PATH)/UNITY/include \
 
 LOCAL_SRC_FILES := \
     $(wildcard $(LOCAL_PATH)/XDL/src/*.c*) \

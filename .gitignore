@@ -1,4 +1,5 @@
 # NDK Build Artifacts
+libs/
 obj/
 
 # Claude Code
