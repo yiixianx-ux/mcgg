@@ -55,7 +55,7 @@ This project compiles to a native Android shared library (`.so`) that is injecte
 | Symbol Resolution | [XDL](https://github.com/hexhacking/xDL) | Dynamic library introspection |
 | UI | [Dear ImGui](https://github.com/ocornut/imgui) | In-game mod menu overlay |
 | Target OS | Android API 21+ | Minimum supported platform |
-| Architecture | `arm64-v8a`, `armeabi-v7a` | Target ABI |
+| Architecture | `arm64-v8a` | Target ABI |
 
 ---
 
@@ -74,9 +74,7 @@ This project compiles to a native Android shared library (`.so`) that is injecte
 │   └── OPENSSL/                # OpenSSL prebuilts
 ├── dump/                       # IL2CPP metadata dump
 ├── libs/                       # Output: compiled .so files
-│   ├── arm64-v8a/
-│   │   └── libmain.so
-│   └── armeabi-v7a/
+│   └── arm64-v8a/
 │       └── libmain.so
 ├── obj/                        # Intermediate build objects
 └── .github/
@@ -123,7 +121,6 @@ The compiled library will be placed at:
 
 ```
 libs/arm64-v8a/libmain.so
-libs/armeabi-v7a/libmain.so
 ```
 
 > **Note:** Ensure `APP_ABI` in `Application.mk` matches your target device architecture.
