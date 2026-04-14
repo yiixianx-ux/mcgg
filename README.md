@@ -20,6 +20,7 @@ An open-source native mod menu for **Magic Chess: Go Go**, built with C++20 and 
 ## Table of Contents
 
 - [Overview](#overview)
+- [Preview](#preview)
 - [Technical Stack](#technical-stack)
 - [Project Structure](#project-structure)
 - [Getting Started](#getting-started)
@@ -39,6 +40,14 @@ This project compiles to a native Android shared library (`.so`) that is injecte
 **How it works:**
 
 The library entry point (`Main.cpp`) is executed as a background thread upon injection. It uses **Dobby** to hook into key game functions at runtime — including `eglSwapBuffers` for rendering the ImGui overlay and Unity's `Input.GetTouch` for capturing touch input within the mod menu. IL2CPP symbols are resolved dynamically using **XDL**, with support for nested class hierarchies, enabling reliable access to game internals across updates.
+
+---
+
+## Preview
+
+<div align="center">
+  <img src="screenshots/preview.jpg" alt="Mod Menu Preview" width="600">
+</div>
 
 ---
 

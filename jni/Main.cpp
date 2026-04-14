@@ -763,6 +763,8 @@ namespace Hooks {
  */
 void SetupThread() noexcept {
     {
+        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+
         void* eglSwapBuffersAddr = DobbySymbolResolver(nullptr, "eglSwapBuffers");
         if (eglSwapBuffersAddr != nullptr) {
             if (DobbyHook(eglSwapBuffersAddr, reinterpret_cast<void*>(Hooks::EglSwapBuffers), reinterpret_cast<void**>(&Originals::EglSwapBuffers)) != 0) {
@@ -771,6 +773,8 @@ void SetupThread() noexcept {
         } else {
             LOGE("[SETUP] CRITICAL FAILURE: Could not resolve eglSwapBuffers in libEGL.so");
         }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 
         int retryCount = 0;
         const int maxRetries = 30; // 60 seconds timeout
@@ -781,6 +785,8 @@ void SetupThread() noexcept {
             localHandle = xdl_open("liblogic.so", XDL_DEFAULT);
             retryCount++;
         }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 
         if (localHandle == nullptr) {
             LOGE("[SETUP] CRITICAL FAILURE: Timeout waiting for liblogic.so to load.");
