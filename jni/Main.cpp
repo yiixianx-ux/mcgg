@@ -649,8 +649,8 @@ inline void AppendCodepointAsUtf8(std::string& out, char32_t cp) noexcept
     std::string result;
     result.reserve(MaxUtf8Bytes(length));
 
-    bool error = Transcode(chars, length, result);
-    if (error) {
+    bool ok = Transcode(chars, length, result);
+    if (!ok) {
         return "";
     }
 
@@ -759,18 +759,26 @@ namespace Hooks {
                 }
             }
 
+            ImGui::SetNextWindowSize(ImVec2(500, 500), ImGuiCond_Once);
             if (ImGui::Begin("Magic Chess Go Go", nullptr)) {
                 if (ImGui::BeginTabBar("##MainTabBar")) {
                     if (ImGui::BeginTabItem("Info")) {
                         ImGui::SeparatorText("Players");
-                        
+                        int currentSelfID = SelfAccountID.load(std::memory_order_relaxed);
                         int currentEnemyID = EnemyAccountID.load(std::memory_order_relaxed);
-                        if (Originals::MCLogicBattleData_ILOGIC_GetSelfChessPlayerName != nullptr && currentEnemyID != -1) {
-                            Il2CppString* rawName = Originals::MCLogicBattleData_ILOGIC_GetSelfChessPlayerName(nullptr, currentEnemyID);
-                            std::string EnemyName = Il2CppStringToStdString(rawName);
-                            ImGui::Text("Enemy: %s", EnemyName.empty() ? "Unknown" : EnemyName.c_str());
+                        ImGui::Text("Self Player ID: %d", currentSelfID);
+                        ImGui::Text("Enemy Player ID: %d", currentEnemyID);
+                        ImGui::Spacing();
+                        if (Originals::MCLogicBattleData_ILOGIC_GetSelfChessPlayerName != nullptr && currentSelfID != 1 && currentEnemyID != -1) {
+                            Il2CppString* RawSelfName = Originals::MCLogicBattleData_ILOGIC_GetSelfChessPlayerName(nullptr, currentSelfID);
+                            std::string SelfName = Il2CppStringToStdString(RawSelfName);
+                            Il2CppString* RawEnemyName = Originals::MCLogicBattleData_ILOGIC_GetSelfChessPlayerName(nullptr, currentEnemyID);
+                            std::string EnemyName = Il2CppStringToStdString(RawEnemyName);
+                            ImGui::Text("Self Name: %s", SelfName.empty() ? "Unknown" : SelfName.c_str());
+                            ImGui::Text("Enemy Name: %s", EnemyName.empty() ? "Unknown" : EnemyName.c_str());
                         } else {
-                            ImGui::Text("Enemy: Unknown");
+                            ImGui::Text("Self Name: Unknown");
+                            ImGui::Text("Enemy Name: Unknown");
                         }
                         ImGui::EndTabItem();
                     }
