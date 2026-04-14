@@ -327,6 +327,7 @@ namespace IL2CPP {
     Il2CppThread* (*il2cpp_thread_attach)(Il2CppDomain* domain) = nullptr;
     void (*il2cpp_thread_detach)(Il2CppThread* thread) = nullptr;
     Il2CppThread* (*il2cpp_thread_current)() = nullptr;
+    Il2CppString* (*il2cpp_string_new)(const char* str) = nullptr;
 }
 
 /**
@@ -520,70 +521,139 @@ namespace IL2CPP {
 }
 
 /**
- * @brief Converts a Unity IL2CPP String (UTF-16) to a standard C++ std::string (UTF-8).
- * 
- * @details Safely handles surrogate pairs and replaces invalid characters to prevent crashes
- *          when displaying player names or game text in ImGui. Includes strict bounds checking.
- * 
- * @param str Pointer to the Il2CppString object.
- * @return std::string The converted UTF-8 string. Returns empty string on failure or invalid input.
+ * Appends a single validated Unicode codepoint as UTF-8 to `out`.
+ *
+ * The caller is responsible for ensuring `cp` is not in the surrogate range
+ * (U+D800–U+DFFF) and does not exceed U+10FFFF.
  */
-[[nodiscard]] std::string Il2CppToStdString(Il2CppString* str) noexcept {
-    if (str == nullptr || str->length <= 0 || str->length > 1000000) { // 1MB sanity limit
-        return {};
-    }
-
-    if (str->chars == nullptr) {
-        return {};
-    }
-
+inline void AppendCodepointAsUtf8(std::string& out, char32_t cp) noexcept
+{
+    if (cp <= 0x7Fu)
     {
-        std::string out;
-        out.reserve(static_cast<size_t>(str->length));
-
-        const char16_t* data = str->chars;
-        const int len = str->length;
-
-        for (int i = 0; i < len; ++i) {
-            char32_t cp;
-            char16_t ch = data[i];
-
-            if (ch >= 0xD800 && ch <= 0xDBFF) {
-                if (i + 1 < len) {
-                    char16_t low = data[i + 1];
-                    if (low >= 0xDC00 && low <= 0xDFFF) {
-                        cp = ((ch - 0xD800) << 10) + (low - 0xDC00) + 0x10000;
-                        ++i;
-                    } else {
-                        cp = 0xFFFD; // Replacement character
-                    }
-                } else {
-                    cp = 0xFFFD;
-                }
-            } else if (ch >= 0xDC00 && ch <= 0xDFFF) {
-                cp = 0xFFFD;
-            } else {
-                cp = ch;
-            }
-
-            if (cp <= 0x7F) {
-                out.push_back(static_cast<char>(cp));
-            } else if (cp <= 0x7FF) {
-                out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
-                out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
-            } else if (cp <= 0xFFFF) {
-                out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
-                out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
-                out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
-            } else {
-                out.push_back(static_cast<char>(0xF0 | (cp >> 18)));
-                out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
-                out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
-                out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
-            }
-        }
-        return out;
+        out.push_back(static_cast<char>(cp));
     }
+    else if (cp <= 0x7FFu)
+    {
+        out.push_back(static_cast<char>(0xC0u |  (cp >> 6)));
+        out.push_back(static_cast<char>(0x80u |  (cp        & 0x3Fu)));
+    }
+    else if (cp <= 0xFFFFu)
+    {
+        out.push_back(static_cast<char>(0xE0u |  (cp >> 12)));
+        out.push_back(static_cast<char>(0x80u | ((cp >>  6) & 0x3Fu)));
+        out.push_back(static_cast<char>(0x80u |  (cp        & 0x3Fu)));
+    }
+    else // U+10000 – U+10FFFF
+    {
+        out.push_back(static_cast<char>(0xF0u |  (cp >> 18)));
+        out.push_back(static_cast<char>(0x80u | ((cp >> 12) & 0x3Fu)));
+        out.push_back(static_cast<char>(0x80u | ((cp >>  6) & 0x3Fu)));
+        out.push_back(static_cast<char>(0x80u |  (cp        & 0x3Fu)));
+    }
+}
+
+/**
+ * Computes a conservative upper bound on the number of UTF-8 bytes
+ * required for a UTF-16 sequence of `utf16Length` code units.
+ *
+ * Rationale: every BMP code unit expands to at most 3 UTF-8 bytes;
+ * supplementary characters encoded as surrogate pairs (2 code units)
+ * expand to 4 bytes — always less than 2 × 3 = 6, so the factor of 3
+ * is a valid and tight upper bound.
+ */
+[[nodiscard]] constexpr std::size_t MaxUtf8Bytes(std::size_t utf16Length) noexcept
+{
+    return utf16Length * 3u;
+}
+
+/**
+ * Core UTF-16 LE → UTF-8 transcoder.
+ *
+ * Iterates the code-unit array exactly once (O(n)).
+ * Performs strict surrogate validation: lone surrogates of either kind
+ * are rejected rather than passed through as replacement characters,
+ * consistent with the WHATWG "fatal" error mode.
+ *
+ * @param chars   Pointer to the first UTF-16 code unit. Must not be null.
+ * @param length  Number of code units to process.
+ * @param out     Destination string. Caller should pre-reserve capacity.
+ * @return        Utf16ConversionError::None on success; a specific code otherwise.
+ */
+[[nodiscard]] bool Transcode(const char16_t* chars, std::size_t length, std::string& out) noexcept
+{
+    for (std::size_t i = 0; i < length; )
+    {
+        const char16_t unit = chars[i++];
+
+        // ── Detect a lone low surrogate ──────────────────────────────────
+        if (unit >= 0xDC00u && unit <= 0xDFFFu)
+            return Utf16ConversionError::UnexpectedLowSurrogate;
+
+        char32_t codepoint;
+
+        // ── Decode a surrogate pair ──────────────────────────────────────
+        if (unit >= 0xD800u && unit <= 0xDBFFu)
+        {
+            // A high surrogate must be immediately followed by a low surrogate.
+            if (i >= length)
+                return false;
+
+            const char16_t low = chars[i];
+
+            if (low < 0xDC00u || low > 0xDFFFu)
+                return false;
+
+            ++i;
+
+            // Combine the pair into a supplementary codepoint (U+10000–U+10FFFF).
+            codepoint = 0x10000u
+                      + (static_cast<char32_t>(unit - 0xD800u) << 10)
+                      +  static_cast<char32_t>(low  - 0xDC00u);
+        }
+        else
+        {
+            // ── Plain BMP character (U+0000–U+D7FF, U+E000–U+FFFF) ──────
+            codepoint = unit;
+        }
+
+        AppendCodepointAsUtf8(out, codepoint);
+    }
+
+    return true;
+}
+
+/**
+ * Converts an Il2CppString to a UTF-8 encoded std::string.
+ *
+ * This variant throws on any invalid input or malformed encoding, making it
+ * suitable for contexts where failures are truly exceptional.
+ *
+ * @param  il2String  Pointer to the source string. Must not be null.
+ * @return            A valid UTF-8 std::string.
+ */
+[[nodiscard]] std::string Il2CppStringToStdString(const Il2CppString* il2String)
+{
+    if (!il2String)
+        return "";
+
+    if (il2String->length < 0)
+        return "";
+
+    if (il2String->length == 0)
+        return "";
+
+    const auto* chars  = reinterpret_cast<const char16_t*>(il2String->chars);
+    const auto  length = static_cast<std::size_t>(il2String->length);
+
+    std::string result;
+    result.reserve(MaxUtf8Bytes(length));
+
+    bool error = Transcode(chars, length, result);
+    if (error) {
+        return "";
+    }
+
+    return result;
 }
 
 /**
@@ -683,7 +753,7 @@ namespace Hooks {
                         int currentEnemyID = EnemyAccountID.load(std::memory_order_relaxed);
                         if (Originals::MCLogicBattleData_ILOGIC_GetSelfChessPlayerName != nullptr && currentEnemyID != -1) {
                             Il2CppString* rawName = Originals::MCLogicBattleData_ILOGIC_GetSelfChessPlayerName(nullptr, currentEnemyID);
-                            std::string EnemyName = Il2CppToStdString(rawName);
+                            std::string EnemyName = Il2CppStringToStdString(rawName);
                             ImGui::Text("Enemy: %s", EnemyName.empty() ? "Unknown" : EnemyName.c_str());
                         } else {
                             ImGui::Text("Enemy: Unknown");
@@ -832,6 +902,7 @@ void SetupThread() noexcept {
         DO_API(il2cpp_thread_attach, localHandle);
         DO_API(il2cpp_thread_detach, localHandle);
         DO_API(il2cpp_thread_current, localHandle);
+        DO_API(il2cpp_string_new, localHandle);
 
         if (IL2CPP::il2cpp_thread_attach != nullptr && IL2CPP::il2cpp_domain_get != nullptr) {
             IL2CPP::il2cpp_thread_attach(IL2CPP::il2cpp_domain_get());
