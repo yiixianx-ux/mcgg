@@ -587,7 +587,7 @@ inline void AppendCodepointAsUtf8(std::string& out, char32_t cp) noexcept
 
         // ── Detect a lone low surrogate ──────────────────────────────────
         if (unit >= 0xDC00u && unit <= 0xDFFFu)
-            return Utf16ConversionError::UnexpectedLowSurrogate;
+            return false;
 
         char32_t codepoint;
 
