@@ -27,6 +27,7 @@ An open-source native mod menu for **Magic Chess: Go Go**, built with C++20 and 
 - [Building](#building)
 - [CI/CD & Releases](#cicd--releases)
 - [Available Features](#available-features)
+- [FAQ](#faq)
 - [Logging & Debugging](#logging--debugging)
 - [Contributing](#contributing)
 - [License](#license)
@@ -35,7 +36,9 @@ An open-source native mod menu for **Magic Chess: Go Go**, built with C++20 and 
 
 ## Overview
 
-This project compiles to a native Android shared library (`.so`) that is injected into the Magic Chess: Go Go game process at runtime. Once loaded, it intercepts internal game functions, resolves symbols from in-memory libraries, and renders a floating mod menu overlay using Dear ImGui — all without modifying the game's APK.
+This project is an advanced **Android game modding example** that compiles to a native shared library (`.so`) and is injected into the Magic Chess: Go Go game process at runtime. It serves as a comprehensive **C++ mod menu example** for those interested in **Unity IL2CPP hooking** and native Android development.
+
+Once loaded, it intercepts internal game functions, resolves symbols from in-memory libraries, and renders a floating mod menu overlay using Dear ImGui — all without modifying the game's APK.
 
 **How it works:**
 
@@ -156,6 +159,19 @@ The following mod features are currently implemented:
 | **Next Enemy Info** | Displays information about the next incoming enemy formation before it arrives |
 
 Additional features are planned. Community contributions for new features are welcomed — please review the [Contributing](#contributing) section before submitting.
+
+---
+
+## FAQ
+
+**How does the mod menu work?**
+The mod menu uses **Dobby** to hook into the `eglSwapBuffers` function of the Android graphics system, allowing it to render a **Dear ImGui** overlay on top of the game. It captures touch input by hooking Unity's native input methods.
+
+**What is IL2CPP resolution?**
+IL2CPP (Intermediate Language To C++) is Unity's technology for converting C# code into C++ for better performance. This project uses **XDL** to dynamically find the memory addresses of these C++ functions at runtime, allowing the mod to interact with game logic without needing a static offset for every update.
+
+**Is this an Android game modding tutorial?**
+While this is a functional project, the clean code structure and comprehensive `README.md` make it an excellent reference for anyone looking for a **native Android modding guide**.
 
 ---
 
