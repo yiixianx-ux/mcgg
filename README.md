@@ -2,31 +2,11 @@
 
 <div align="center">
 
-[
-
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-
-](https://opensource.org/licenses/MIT)
-[
-
-![Platform](https://img.shields.io/badge/Platform-Android-green.svg)
-
-](https://developer.android.com)
-[
-
-![NDK](https://img.shields.io/badge/NDK-arm64--v8a%20%7C%20armeabi--v7a-blue.svg)
-
-](https://developer.android.com/ndk)
-[
-
-![C++](https://img.shields.io/badge/C++-20-00599C.svg?logo=c%2B%2B)
-
-](https://en.cppreference.com/w/cpp/20)
-[
-
-![Build](https://img.shields.io/github/actions/workflow/status/Yan-0001/MagicChessGoGo/release.yml?label=CI)
-
-](https://github.com/Yan-0001/MagicChessGoGo/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Platform](https://img.shields.io/badge/Platform-Android-green.svg)](https://developer.android.com)
+[![NDK](https://img.shields.io/badge/NDK-arm64--v8a-blue.svg)](https://developer.android.com/ndk)
+[![C++](https://img.shields.io/badge/C++-20-00599C.svg?logo=c%2B%2B)](https://en.cppreference.com/w/cpp/20)
+[![Build](https://img.shields.io/github/actions/workflow/status/Yan-0001/MagicChessGoGo/release.yml?label=CI)](https://github.com/Yan-0001/MagicChessGoGo/actions)
 <a href="https://play.google.com/store/apps/details?id=com.mobilechess.gp">
   <img src="https://img.shields.io/badge/Game-Magic_Chess_Go_Go-important?logo=youtubegaming" alt="Game - Magic Chess Go Go">
 </a>
